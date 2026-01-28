@@ -2,10 +2,12 @@ from google.cloud import bigquery
 from dotenv import load_dotenv
 import os
 
+
+# Load environment variables
 load_dotenv()
 
 PROJECT_ID = os.getenv("PROJECT_ID")
-DATASET = os.getenv("DATASET")
+DATASET = os.getenv("DATASET_BQ")
 REGION = os.getenv("REGION")
 
 client = bigquery.Client(project=PROJECT_ID)
@@ -24,7 +26,7 @@ with open("sql/vitals_schema.sql") as f:
     sql = f.read()
 
 sql = sql.replace("{{PROJECT_ID}}", PROJECT_ID).replace(
-    "{{DATASET}}", os.getenv("DATASET"))
+    "{{DATASET}}", DATASET)
 client.query(sql).result()
 
 print("Successfully created BigQuery table.")
