@@ -75,7 +75,7 @@ This component of the infrastructure is designed to support:
 |     value      |    FLOAT     | NULLABLE |                                    Value of vital measure.                                    |
 | flag_type_code | INT64 (enum) | REQUIRED | Code for quality flags: {0: NULL (no flag), 1: INV_VALUE, 2: NAN_VALUE, 3: INV_TS, 4: IMP_TS} |
 
-> **COMMENT:** I opted to store physiological data in a long (tidy) format (i.e., one row per timestamp and sensor modality, rather than one row per timestamp) because this structure aligns more naturally with my analytical workflow. However, I was unable to locate a clear reference supporting this choice in the literature.
+> **COMMENT:** I opted to store physiological data in a long (tidy) format (i.e., one row per timestamp and sensor modality, rather than one row per timestamp) because this structure aligns more naturally with my analytical workflow. However, I was unable to locate a clear reference supporting this choice in the literature. In the long-term, it can also prove to be beneficial if other modalities are introduced (or some are removed) since it won't require schema changes.
 
 > **COMMENT:** Considering the table format, I haven't made a decision on whether is makes sense to "store missing" values for the modalities, but for data completeness (and while I reason about it), I am also storing it as a data row (even if that implies redundant storage).
 
