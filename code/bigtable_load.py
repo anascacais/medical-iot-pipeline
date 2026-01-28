@@ -12,6 +12,69 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 INSTANCE_ID = os.getenv("INSTANCE_ID_BT")
 
 
+# call this at the beginning of ingestion.py for both tables
+def get_table(project_id, instance_id, table_id):
+    '''Get a Google Cloud Bigtable table instance.
+
+    Parameters
+    ----------
+    project_id : str
+        Google Cloud project ID.
+    instance_id : str
+        Bigtable instance ID.
+    table_id : str
+        Name of the Bigtable table.
+
+    Returns
+    -------
+    table : google.cloud.bigtable.table.Table
+        Bigtable table object that can be used for read and write operations.
+    '''
+    client = bigtable.Client(
+        project=project_id,
+        admin=True
+    )
+
+    instance = client.instance(instance_id)
+    table = instance.table(table_id)
+
+    return table
+
+
+# call this for each new data stream after being cleaned (once for each table)
+def write_to_bigtable(table, sample):
+    """
+    Write a cleaned sample to Bigtable.
+
+    Parameters
+    ----------
+    table : google.cloud.bigtable.table.Table
+        Bigtable table instance.
+    sample : dict
+        Cleaned sample with optional fields.
+    """
+    if table.table_id == "stream_data":
+        row_key = f"{sample['sensor_id']}#{sample['ts_smp']}".encode()
+    elif table.table_id == "health_check":
+        row_key = f"{sample['sensor_id']}#{sample['ts_ing']}".encode()
+    else:
+        raise ValueError(
+            f"Table ID {table.table_id} does not match any existing table.")
+
+    row = table.direct_row(row_key)
+
+    # Validate column family according to currently allowed values
+    for key, value in sample:
+        if key in ["hr", "temp", "SpO2", "battery"]:
+            row.set_cell("vitals", key, value)
+        elif key in ["ts_ing", "ts_smp"]:
+            row.set_cell("meta", key, value)
+        elif key in ["flags"]:
+            for flag in value:
+                row.set_cell("flag", flag, 1)
+    row.commit()
+
+
 def create_table(instance, table_id, column_families):
     '''Create a Bigtable table with specified column families with Garbage Collection Rule Max Versions equal to 1.
 
