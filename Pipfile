@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 dotenv = "*"
 google-cloud-bigquery = "*"
+google-cloud-bigtable = "*"
 
 [dev-packages]
 

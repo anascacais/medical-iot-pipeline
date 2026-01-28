@@ -57,6 +57,10 @@ Table `health_check`:
 
 > **COMMENT:** I am not including `sensor_id` and `ts_*` as table columns because they are already present in the corresponding row keys and this would avoid redundancy and added storage -- I don't know if, downstream, it would make it more efficient to already have it as a table column instead of decoding it from the row key, but my intuition says no.
 
+### Garbage Collection Rules
+
+The same garbage collection rule is applied to all column families from both tables: a max of 1 version of each cell is kept. This assumes that there would only be multiple versions of the same cell if the same payload was sent more than once (for `stream_data`) or if the ingestion system received multiple samples simultaneously, which I assume to be impossible (for `health_check`).
+
 ## Analytics & Warehousing (BigQuery)
 
 This component of the infrastructure is designed to support:
