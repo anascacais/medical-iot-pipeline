@@ -31,8 +31,8 @@ Table `stream_data`:
 | :---------------: | :--------: | :-------------------------: | :------------------------------------------: |
 |      vitals       |     hr     |            FLOAT            |                 Heart rate.                  |
 |      vitals       |    temp    |            FLOAT            |              Body temperature.               |
-|      vitals       |    SpO2    |            INT64            | Peripheral oxygen saturation, in percentage. |
-|      vitals       |  battery   |            INT64            |        Battery level, in percentage.         |
+|      vitals       |    SpO2    |            FLOAT            | Peripheral oxygen saturation, in percentage. |
+|      vitals       |  battery   |            FLOAT            |        Battery level, in percentage.         |
 |       meta        |   ts_ing   | TIMESTAMP (epoch ms, int64) |         Timestamp of ingestion time.         |
 
 Table `health_check`:
@@ -41,7 +41,8 @@ Table `health_check`:
 | ----------------- | ---------- | --------------------------- | --------------------------------------------------------------------- |
 | vitals            | hr         | FLOAT                       | Heart rate.                                                           |
 | vitals            | temp       | FLOAT                       | Body temperature.                                                     |
-| vitals            | SpO2       | INT64                       | Peripheral oxygen saturation, in percentage.                          |
+| vitals            | SpO2       | FLOAT                       | Peripheral oxygen saturation, in percentage.                          |
+| vitals            | battery    | FLOAT                       | Battery level, in percentage.                                         |
 | meta              | ts_smp     | TIMESTAMP (epoch ms, int64) | Timestamp of sample.                                                  |
 | flag              | HR_INV     | INT64                       | Flag for heart rate outside of physiological range.                   |
 | flag              | HR_NAN     | INT64                       | Flag for missing heart rate value.                                    |
@@ -49,7 +50,38 @@ Table `health_check`:
 | flag              | TEMP_NAN   | INT64                       | Flag for missing body temperature value.                              |
 | flag              | SPO2_INV   | INT64                       | Flag for peripheral oxygen saturation outside of physiological range. |
 | flag              | SPO2_NAN   | INT64                       | Flag for missing peripheral oxygen saturation value.                  |
+| flag              | BAT_INV    | INT64                       | Flag for invalid battery level.                                       |
+| flag              | BAT_NAN    | INT64                       | Flag for missing battery level.                                       |
 | flag              | TS_INV     | INT64                       | Flag for invalid (format) timestamp.                                  |
 | flag              | TS_IMP     | INT64                       | Flag for impossible timestamp.                                        |
 
-_**COMMENT:** I am not including `sensor_id` and `ts_\*` as table columns because they are already present in the corresponding row keys and this would avoid redundancy and added storage -- I don't know if, downstream, it would make it more efficient to already have it as a table column instead of decoding it from the row key, but my intuition says no.\_
+> **COMMENT:** I am not including `sensor_id` and `ts_*` as table columns because they are already present in the corresponding row keys and this would avoid redundancy and added storage -- I don't know if, downstream, it would make it more efficient to already have it as a table column instead of decoding it from the row key, but my intuition says no.
+
+## Analytics & Warehousing (BigQuery)
+
+This component of the infrastructure is designed to support:
+
+1. Raw data storage, in compliance with regulatory requirements (under the [Data Act](https://arc.net/l/quote/bukvrfhl) raw data must be retained).
+2. Offline, downstream ML pipelines for further analysis and model development.
+
+### BigQuery Schema
+
+| **Field Name** |   **Type**   | **Mode** |                                        **Description**                                        |
+| :------------: | :----------: | :------: | :-------------------------------------------------------------------------------------------: |
+|     ts_smp     |  TIMESTAMP   | NULLABLE |                                     Timestamp of sample.                                      |
+|     ts_ing     |  TIMESTAMP   | REQUIRED |                                 Timestamp of ingestion time.                                  |
+|   sensor_id    |    STRING    | REQUIRED |                               Sensor ID, proxy for patient ID.                                |
+|    modality    |    STRING    | REQUIRED |                    Type of vital measure (e.g., HR, Temp, SpO2, battery).                     |
+|     value      |    FLOAT     | NULLABLE |                                    Value of vital measure.                                    |
+| flag_type_code | INT64 (enum) | REQUIRED | Code for quality flags: {0: NULL (no flag), 1: INV_VALUE, 2: NAN_VALUE, 3: INV_TS, 4: IMP_TS} |
+
+> **COMMENT:** I opted to store physiological data in a long (tidy) format (i.e., one row per timestamp and sensor modality, rather than one row per timestamp) because this structure aligns more naturally with my analytical workflow. However, I was unable to locate a clear reference supporting this choice in the literature.
+
+> **COMMENT:** Considering the table format, I haven't made a decision on whether is makes sense to "store missing" values for the modalities, but for data completeness (and while I reason about it), I am also storing it as a data row (even if that implies redundant storage).
+
+This assumes that `sensor_id` is a proxy for patient ID. Alternatively, it could be interesting to have 3 additional tables with (mostly) static data that is not queried as often as `physio_data` but could be helpful for documentation purposes: `sensors` (with keys e.g., `sensor_id`, `sampling_frequency`, `firmware`, `units`); `patients` (with keys e.g., `patient_id`, `sex`, `birth_year`); `patient_sensors` (with keys `patient_id`, `sensor_id`, `start_date`, `end_date`.
+
+### Partitioning & Clustering
+
+- **Partitioning:** Data will be partitioned via `ts_smp`, which allows for efficient pruning of historical data when querying specific time ranges. This assumes that most queries will be related to the time when samples were recorded (and not when they were received by the system).
+- **Clustering:** Data will be clustered by `modality`, then `flag_type_code`. Clustering by `modality` assumes frequent queries for ML pipelines when computing modality-specific features, as well as data drift monitoring; `flag_type_code` next enables quick identification of valid versus invalid measurements. Alternatively, we could also cluster last by `ts_ing`, if we expect frequent queries related to system health checks.
