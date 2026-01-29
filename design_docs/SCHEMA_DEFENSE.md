@@ -27,33 +27,33 @@ Table `health_check`: `sensor_id#reversed_timestamp` (where `reversed_timestamp`
 
 Table `stream_data`:
 
-| **Column Family** | **Column** |      **Logical type**       |               **Description**                |
-| :---------------: | :--------: | :-------------------------: | :------------------------------------------: |
-|      vitals       |     hr     |            FLOAT            |                 Heart rate.                  |
-|      vitals       |    temp    |            FLOAT            |              Body temperature.               |
-|      vitals       |    SpO2    |            FLOAT            | Peripheral oxygen saturation, in percentage. |
-|      vitals       |  battery   |            FLOAT            |        Battery level, in percentage.         |
-|       meta        |   ts_ing   | TIMESTAMP (epoch ms, int64) |         Timestamp of ingestion time.         |
+| **Column Family** | **Column** |          **Logical type**          |               **Description**                |
+| :---------------: | :--------: | :--------------------------------: | :------------------------------------------: |
+|      vitals       |     hr     | FLOAT64 (IEEE-754 binary encoding) |                 Heart rate.                  |
+|      vitals       |    temp    | FLOAT64 (IEEE-754 binary encoding) |              Body temperature.               |
+|      vitals       |    SpO2    | FLOAT64 (IEEE-754 binary encoding) | Peripheral oxygen saturation, in percentage. |
+|      vitals       |  battery   | FLOAT64 (IEEE-754 binary encoding) |        Battery level, in percentage.         |
+|       meta        |   ts_ing   |          INT64 (epoch ms)          |         Timestamp of ingestion time.         |
 
 Table `health_check`:
 
-| **Column Family** | **Column** | **Logical type**            | **Description**                                                       |
-| ----------------- | ---------- | --------------------------- | --------------------------------------------------------------------- |
-| vitals            | hr         | FLOAT                       | Heart rate.                                                           |
-| vitals            | temp       | FLOAT                       | Body temperature.                                                     |
-| vitals            | SpO2       | FLOAT                       | Peripheral oxygen saturation, in percentage.                          |
-| vitals            | battery    | FLOAT                       | Battery level, in percentage.                                         |
-| meta              | ts_smp     | TIMESTAMP (epoch ms, int64) | Timestamp of sample.                                                  |
-| flag              | HR_INV     | INT64                       | Flag for heart rate outside of physiological range.                   |
-| flag              | HR_NAN     | INT64                       | Flag for missing heart rate value.                                    |
-| flag              | TEMP_INV   | INT64                       | Flag for body temperature outside of physiological range.             |
-| flag              | TEMP_NAN   | INT64                       | Flag for missing body temperature value.                              |
-| flag              | SPO2_INV   | INT64                       | Flag for peripheral oxygen saturation outside of physiological range. |
-| flag              | SPO2_NAN   | INT64                       | Flag for missing peripheral oxygen saturation value.                  |
-| flag              | BAT_INV    | INT64                       | Flag for invalid battery level.                                       |
-| flag              | BAT_NAN    | INT64                       | Flag for missing battery level.                                       |
-| flag              | TS_INV     | INT64                       | Flag for invalid (format) timestamp.                                  |
-| flag              | TS_IMP     | INT64                       | Flag for impossible timestamp.                                        |
+| **Column Family** | **Column**  | **Logical type**                   | **Description**                                                       |
+| ----------------- | ----------- | ---------------------------------- | --------------------------------------------------------------------- |
+| vitals            | hr          | FLOAT64 (IEEE-754 binary encoding) | Heart rate.                                                           |
+| vitals            | temp        | FLOAT64 (IEEE-754 binary encoding) | Body temperature.                                                     |
+| vitals            | SpO2        | FLOAT64 (IEEE-754 binary encoding) | Peripheral oxygen saturation, in percentage.                          |
+| vitals            | battery     | FLOAT64 (IEEE-754 binary encoding) | Battery level, in percentage.                                         |
+| meta              | ts_smp      | INT64 (epoch ms)                   | Timestamp of sample.                                                  |
+| flag              | hr_INV      | INT64                              | Flag for heart rate outside of physiological range.                   |
+| flag              | hr_NAN      | INT64                              | Flag for missing heart rate value.                                    |
+| flag              | temp_INV    | INT64                              | Flag for body temperature outside of physiological range.             |
+| flag              | temp_NAN    | INT64                              | Flag for missing body temperature value.                              |
+| flag              | SpO2_INV    | INT64                              | Flag for peripheral oxygen saturation outside of physiological range. |
+| flag              | SpO2_NAN    | INT64                              | Flag for missing peripheral oxygen saturation value.                  |
+| flag              | battery_INV | INT64                              | Flag for invalid battery level.                                       |
+| flag              | battery_NAN | INT64                              | Flag for missing battery level.                                       |
+| flag              | TS_INV      | INT64                              | Flag for invalid (format) timestamp.                                  |
+| flag              | TS_IMP      | INT64                              | Flag for impossible timestamp.                                        |
 
 > **COMMENT:** I am not including `sensor_id` and `ts_*` as table columns because they are already present in the corresponding row keys and this would avoid redundancy and added storage -- I don't know if, downstream, it would make it more efficient to already have it as a table column instead of decoding it from the row key, but my intuition says no.
 
@@ -70,14 +70,14 @@ This component of the infrastructure is designed to support:
 
 ### BigQuery Schema
 
-| **Field Name** |   **Type**   | **Mode** |                                        **Description**                                        |
-| :------------: | :----------: | :------: | :-------------------------------------------------------------------------------------------: |
-|     ts_smp     |  TIMESTAMP   | NULLABLE |                                     Timestamp of sample.                                      |
-|     ts_ing     |  TIMESTAMP   | REQUIRED |                                 Timestamp of ingestion time.                                  |
-|   sensor_id    |    STRING    | REQUIRED |                               Sensor ID, proxy for patient ID.                                |
-|    modality    |    STRING    | REQUIRED |                    Type of vital measure (e.g., HR, Temp, SpO2, battery).                     |
-|     value      |   FLOAT64    | NULLABLE |                                    Value of vital measure.                                    |
-| flag_type_code | INT64 (enum) | REQUIRED | Code for quality flags: {0: NULL (no flag), 1: INV_VALUE, 2: NAN_VALUE, 3: INV_TS, 4: IMP_TS} |
+| **Field Name** |    **Type**    | **Mode** |                                        **Description**                                        |
+| :------------: | :------------: | :------: | :-------------------------------------------------------------------------------------------: |
+|     ts_smp     | TIMESTAMP (ms) | NULLABLE |                                     Timestamp of sample.                                      |
+|     ts_ing     | TIMESTAMP (ms) | REQUIRED |                                 Timestamp of ingestion time.                                  |
+|   sensor_id    |     STRING     | REQUIRED |                               Sensor ID, proxy for patient ID.                                |
+|    modality    |     STRING     | REQUIRED |                    Type of vital measure (e.g., HR, Temp, SpO2, battery).                     |
+|     value      |    FLOAT64     | NULLABLE |                                    Value of vital measure.                                    |
+| flag_type_code |  INT64 (enum)  | REQUIRED | Code for quality flags: {0: NULL (no flag), 1: INV_VALUE, 2: NAN_VALUE, 3: INV_TS, 4: IMP_TS} |
 
 > **COMMENT:** I opted to store physiological data in a long (tidy) format (i.e., one row per timestamp and sensor modality, rather than one row per timestamp) because this structure aligns more naturally with my analytical workflow. However, I was unable to locate a clear reference supporting this choice in the literature. In the long-term, it can also prove to be beneficial if other modalities are introduced (or some are removed) since it won't require schema changes.
 
@@ -89,3 +89,7 @@ This assumes that `sensor_id` is a proxy for patient ID. Alternatively, it could
 
 - **Partitioning:** Data will be partitioned via `ts_smp`, which allows for efficient pruning of historical data when querying specific time ranges. This assumes that most queries will be related to the time when samples were recorded (and not when they were received by the system).
 - **Clustering:** Data will be clustered by `modality`, then `flag_type_code`. Clustering by `modality` assumes frequent queries for ML pipelines when computing modality-specific features, as well as data drift monitoring; `flag_type_code` next enables quick identification of valid versus invalid measurements. Alternatively, we could also cluster last by `ts_ing`, if we expect frequent queries related to system health checks.
+
+## Time Precision
+
+Timestamps are stored with **millisecond** resolution, both in BigQuery and Bigtable. Sub-millisecond precision present in incoming `datetime` objects is truncated during conversion.
