@@ -81,7 +81,7 @@ This component of the infrastructure is designed to support:
 
 > **COMMENT:** I opted to store physiological data in a long (tidy) format (i.e., one row per timestamp and sensor modality, rather than one row per timestamp) because this structure aligns more naturally with my analytical workflow. However, I was unable to locate a clear reference supporting this choice in the literature. In the long-term, it can also prove to be beneficial if other modalities are introduced (or some are removed) since it won't require schema changes.
 
-> **COMMENT:** Considering the table format, I haven't made a decision on whether is makes sense to "store missing" values for the modalities, but for data completeness (and while I reason about it), I am also storing it as a data row (even if that implies redundant storage).
+> **COMMENT:** Considering the table format, I haven't made a decision on whether is makes sense to "store missing" values for the modalities, but for data completeness (and while we reason about it), I am also storing it as a data row (even if that implies redundant storage).
 
 This assumes that `sensor_id` is a proxy for patient ID. Alternatively, it could be interesting to have 3 additional tables with (mostly) static data that is not queried as often as `physio_data` but could be helpful for documentation purposes: `sensors` (with keys e.g., `sensor_id`, `sampling_frequency`, `firmware`, `units`); `patients` (with keys e.g., `patient_id`, `sex`, `birth_year`); `patient_sensors` (with keys `patient_id`, `sensor_id`, `start_date`, `end_date`.
 
