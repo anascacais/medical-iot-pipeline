@@ -14,6 +14,14 @@ This layer expects to receive a dictionary-style input with a set of keys (e.g.,
 
 > **COMMENT:** Sensors reporting a constant value for a prolonged period may indicate a hardware malfunction or sensor placement issue. Detecting this reliably would require custom logic for each physiological signal, due to their differing non-stationary behaviors; therefore, this check will not be implemented at this stage.
 
+Physiological ranges were initially defined based on commonly cited literature and online sources, but should be refined according to clinical evidence and peer-reviewed studies:
+
+- Heart Rate (HR): 0--350 bpm [(Cleveland Clinic 2024)](<[%3Chttps://doi.org/10.1016/s0735-1097(00)01054-8%3E](https://my.clevelandclinic.org/health/diseases/22885-atrial-flutter)>)
+- Body temperature: 25--45°C [(Suchard 2007](https://pmc.ncbi.nlm.nih.gov/articles/PMC2672216/), [Oprita et al. 2025)](https://pmc.ncbi.nlm.nih.gov/articles/PMC11900338/)
+- Peripheral oxygen saturation (SpO2): 0--100%
+
+> **COMMENT:** Couldn't find an adequate source for SpO2 range.
+
 ### Cleaning Logic
 
 In compliance with regulatory requirements (under the [Data Act](https://arc.net/l/quote/bukvrfhl) raw data must be retained), data is not transformed at the processing layer. This ensures full transparency and traceability of all measurements. Maintaining the raw data is also critical for downstream system monitoring and operational oversight, including logging, device health checks, and data integrity verification.
