@@ -30,28 +30,57 @@ def simulate(file_path, delay_s=0.1):
         A single raw data sample from the file, yielded one at a time.
     '''
     with open(file_path, "r") as f:
-        i = 0
-        for line in f:
-            if line.strip():  # what if this is not true? Could it be a malformed payload or not really? I will assume no since this is just simulating the data stream
-                yield ast.literal_eval(line)
-                time.sleep(delay_s)
-                i += 1
-            if i > 3:
-                break
+def parse_event_timestamp(ts):
+    """
+    Parse an ISO-8601 timestamp string into a timezone-aware datetime.
+
+    Parameters
+    ----------
+    ts : Any
+        Raw timestamp value from the packet.
+
+    Returns
+    -------
+    datetime or None
+        Parsed datetime object if valid, otherwise None.
+    """
+    if not isinstance(ts, str):
+        return None
+
+    try:
+        return datetime.fromisoformat(ts).astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
 
 
-def clean(raw):
-    # add logic to check which data is huploaded to data stream and to health check
-    return {
-        "hr": 77.0,
-        "temp": 36.0,
-        "SpO2": 102,
-        "battery": 55,
-        "ts_ing": datetime.datetime.now(),
-        "ts_smp": datetime.datetime.now(),
-        "flags": ["SPO2_INV"],
-        "sensor_id": "icu-monitor-004"
-    }
+def is_impossible_timestamp(event_time, last_seen_time, now):
+    """
+    Check whether a timestamp is impossible.
+
+    A timestamp is considered impossible if it is:
+    - In the future relative to system time
+    - Earlier than the last observed timestamp for the same sensor
+
+    Parameters
+    ----------
+    event_time : datetime
+        Parsed event timestamp.
+    last_seen_time : datetime or None
+        Last recorded timestamp for the same sensor.
+
+    Returns
+    -------
+    bool
+        True if timestamp is impossible, False otherwise.
+    """
+
+    if event_time > now:
+        return True
+
+    if last_seen_time and event_time < last_seen_time:
+        return True
+
+    return False
 
 
 def main(file_path):
