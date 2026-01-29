@@ -82,6 +82,37 @@ def is_impossible_timestamp(event_time, last_seen_time, now):
 
     return False
 
+def validate_measurement(value, valid_range):
+    """
+    Validate a physiological or battery measurement.
+
+    Parameters
+    ----------
+    value : Any
+        Raw measurement value.
+    valid_range : tuple
+        (min, max) acceptable range.
+
+    Returns
+    -------
+    str
+        One of:
+        - "OK"    : value is valid
+        - "*_NAN" : value is missing or null
+        - "*_INV" : value is outside plausible range
+    """
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "NAN"
+
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return "INV"
+
+    if not (valid_range[0] <= value <= valid_range[1]):
+        return "INV"
+
+    return "OK"
 
 def main(file_path):
 
