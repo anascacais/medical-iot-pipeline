@@ -1,12 +1,12 @@
-import ast
+import time
 import json
 import os
 import datetime
 from dotenv import load_dotenv
-from bigtable_load import get_last_seen_timestamps, get_table, write_to_bigtable
+from bigtable_load import get_last_seen_timestamps, get_table, write_to_bigtable, decode_row
 from datetime import datetime, timezone
 import numpy as np
-
+from time_aux import ts2dt
 
 # Load environment variables
 load_dotenv()
@@ -14,6 +14,7 @@ load_dotenv()
 EMULATOR_HOST = os.getenv("BIGTABLE_EMULATOR_HOST")
 PROJECT_ID = os.getenv("PROJECT_ID")
 INSTANCE_ID = os.getenv("INSTANCE_ID_BT")
+MIN_TS = int(os.getenv("MIN_TS"))
 
 PHYSIOLOGICAL_RANGES = {
     "heart_rate": (0., 350.),          # bpm
@@ -49,6 +50,7 @@ def simulate(file_path, delay_s=0.1):
         # loads entire file onto RAM, but okay for use case
         for line in reversed(f.readlines()):
             yield line
+            time.sleep(delay_s)
 
 
 def parse_event_timestamp(ts):
@@ -66,12 +68,12 @@ def parse_event_timestamp(ts):
         Parsed datetime object if valid, otherwise None.
     """
     if not isinstance(ts, str):
-        return None
+        return ts2dt(MIN_TS)
 
     try:
         return datetime.fromisoformat(ts).astimezone(timezone.utc)
     except (ValueError, TypeError):
-        return None
+        return ts2dt(MIN_TS)
 
 
 def is_impossible_timestamp(event_time, last_seen_time, now):
@@ -122,19 +124,21 @@ def validate_measurement(value, valid_range):
         - "OK"    : value is valid
         - "*_NAN" : value is missing or null
         - "*_INV" : value is outside plausible range
+    float or np.nan (compatible with float)
+
     """
     if value is None or (isinstance(value, float) and np.isnan(value)):
-        return "NAN"
+        return "NAN", np.nan
 
     try:
         value = float(value)
     except (TypeError, ValueError):
-        return "INV"
+        return "INV", np.nan
 
     if not (valid_range[0] <= value <= valid_range[1]):
-        return "INV"
+        return "INV", np.nan
 
-    return "OK"
+    return "OK", value
 
 
 def process_packet(packet, last_seen_timestamps, data_stream_table):
@@ -179,13 +183,14 @@ def process_packet(packet, last_seen_timestamps, data_stream_table):
         return output
 
     sensor_id = packet.get("sensor_id")
+    output["sensor_id"] = sensor_id
     event_ts_raw = packet.get("event_timestamp")
 
     # Timestamp validation
     event_time = parse_event_timestamp(event_ts_raw)
     output["ts_smp"] = event_time
 
-    if event_time is None:
+    if event_time == MIN_TS:
         output["flags"] += ["TS_INV"]
     else:
         if not sensor_id in last_seen_timestamps.keys():
@@ -199,14 +204,16 @@ def process_packet(packet, last_seen_timestamps, data_stream_table):
 
     # Physiological & battery validation
     for field, valid_range in PHYSIOLOGICAL_RANGES.items():
-        status = validate_measurement(packet.get(field), valid_range)
+        status, measure = validate_measurement(packet.get(field), valid_range)
 
         if status == "NAN":
             output["flags"] += [f"{MAP_IO_NAMES[field]}_NAN"]
         elif status == "INV":
             output["flags"] += [f"{MAP_IO_NAMES[field]}_INV"]
-        output[MAP_IO_NAMES[field]] = float(packet.get(field))
 
+        output[MAP_IO_NAMES[field]] = measure
+
+    print(output)
     return output
 
 
@@ -218,11 +225,15 @@ def main(file_path):
     data_stream_table = get_table(PROJECT_ID, INSTANCE_ID, "stream_data")
     health_check_table = get_table(PROJECT_ID, INSTANCE_ID, "health_check")
 
+    i = 0
     for raw in simulate(file_path):
+        if i == 10:
+            break
         clean_sample = process_packet(
             raw, last_seen_timestamps, data_stream_table)
-        # write_to_bigtable(data_stream_table, clean_sample)
+        write_to_bigtable(data_stream_table, health_check_table, clean_sample)
         # write_to_bigquery(clean_sample)
+        i += 1
 
 
 if __name__ == "__main__":
