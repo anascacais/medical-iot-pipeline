@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 from bigtable_load import get_last_seen_timestamps, get_table, write_to_bigtable, decode_row
 from datetime import datetime, timezone
 import numpy as np
-from time_aux import ts2dt
+# local
+from code.time_aux import ts2dt
+from code.bigtable_load import get_last_seen_timestamps, get_table, write_to_bigtable
 
 # Load environment variables
 load_dotenv()
