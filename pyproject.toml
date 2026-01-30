@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
+requires = ["setuptools >= 61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,12 +16,9 @@ classifiers = [
 dependencies = [
  
 ]
-
-[project.urls]
-Repository = "https://github.com/anascacais/medical-iot-pipeline.git"
-
 [tool.setuptools.dynamic]
 version = {attr = "src_code.__version__"}
 
 [tool.setuptools.packages.find]
-where = ["src_code"]
+where = ["."]
+include = ["src_code"]
