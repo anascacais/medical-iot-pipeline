@@ -13,8 +13,8 @@ load_dotenv()
 EMULATOR_HOST = os.getenv("BIGTABLE_EMULATOR_HOST")
 PROJECT_ID = os.getenv("PROJECT_ID")
 INSTANCE_ID = os.getenv("INSTANCE_ID_BT")
-MAX_TS = int(os.getenv("MAX_TS"))
-MIN_TS = int(os.getenv("MIN_TS"))
+MAX_TS = int(os.getenv("MAX_TS", "9999999999999"))
+MIN_TS = int(os.getenv("MIN_TS", "0"))
 EXPECTED_KEYS = ["hr", "temp", "SpO2", "battery"]
 
 

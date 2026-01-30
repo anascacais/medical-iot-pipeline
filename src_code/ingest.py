@@ -16,7 +16,7 @@ load_dotenv()
 EMULATOR_HOST = os.getenv("BIGTABLE_EMULATOR_HOST")
 PROJECT_ID = os.getenv("PROJECT_ID")
 INSTANCE_ID = os.getenv("INSTANCE_ID_BT")
-MIN_TS = int(os.getenv("MIN_TS"))
+MIN_TS = int(os.getenv("MIN_TS", "0"))
 
 PHYSIOLOGICAL_RANGES = {
     "heart_rate": (0., 350.),          # bpm
