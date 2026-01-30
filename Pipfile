@@ -8,6 +8,7 @@ dotenv = "*"
 google-cloud-bigquery = "*"
 google-cloud-bigtable = "*"
 numpy = "*"
+src-code = {file = ".", editable = true}
 
 [dev-packages]
 pytest = "*"

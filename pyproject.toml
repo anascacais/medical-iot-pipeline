@@ -1,9 +1,9 @@
 [build-system]
-requires = ["setuptools >= 61.0.0"]
+requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "src_code"
+name = "src-code"
 dynamic = ["version"]
 readme = "README.md"
 license = { file = "LICENSE" }
