@@ -34,9 +34,11 @@ Missing, invalid, or impossible samples are flagged according to the modality wh
 - **Timestamps:** Event timestamps that are out-of-order or in the future relative to the system (`TS_IMP`), or that cannot be parsed (`TS_INV`). Duplicate timestamps are automatically handled by Bigtable’s garbage collection policy (see [SCHEMA_DEFENSE.md](design_docs/SCHEMA_DEFENSE.md)).
 - **Malformed packet:** In the case of a malformed packet, the `*_NAN` flag is applied to all physiological data and battery, and the `TS_INV` flag is applied to the sample (event) timestamp.
 
+**NOTE:** Whenever the flag `TS_INV` is set, a placeholder value of 0 ms (representing `1970-01-01 00:00:00+00:00`) is stored to prevent conversion and storage errors.
+
 ### Data Formatting
 
-Before sending the clean data to downstream consumers, it is formatted to conform to the required data types, as specified in [SCHEMA_DEFENSE.md](design_docs/SCHEMA_DEFENSE.md)
+Before sending the clean data to downstream consumers, it is formatted to conform to the required data types, as specified in [SCHEMA_DEFENSE.md](design_docs/SCHEMA_DEFENSE.md).
 
 ### Storage
 

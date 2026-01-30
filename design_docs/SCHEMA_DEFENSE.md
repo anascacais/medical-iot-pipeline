@@ -23,6 +23,8 @@ Table `health_check`: `sensor_id#reversed_timestamp` (where `reversed_timestamp`
 - Same logic as above applies.
 - On the Dashboard API, when looking for system health checks for a specific time range, if the same row key was used as in table `stream_data`, then invalid timestamps (e.g., invalid formats or timestamps in the "future") would not be returned (they would be outside the query time range).
 
+**NOTE:** A maximum timestamp of 9999999999999 is used to compute Bigtable reversed timestamps.
+
 ### Bigtable Schema
 
 Table `stream_data`:
