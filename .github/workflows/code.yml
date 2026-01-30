@@ -3,10 +3,10 @@ name: test
 on:
   push:
     branches:
-      - get-ci-running
+      - main
   pull_request:
     branches:
-      - get-ci-running
+      - main
 
 jobs:
   test:
