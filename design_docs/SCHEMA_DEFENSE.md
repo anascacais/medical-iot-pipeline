@@ -92,6 +92,11 @@ This assumes that `sensor_id` is a proxy for patient ID. Alternatively, it could
 - **Partitioning:** Data will be partitioned via `ts_smp`, which allows for efficient pruning of historical data when querying specific time ranges. This assumes that most queries will be related to the time when samples were recorded (and not when they were received by the system).
 - **Clustering:** Data will be clustered by `modality`, then `flag_type_code`. Clustering by `modality` assumes frequent queries for ML pipelines when computing modality-specific features, as well as data drift monitoring; `flag_type_code` next enables quick identification of valid versus invalid measurements. Alternatively, we could also cluster last by `ts_ing`, if we expect frequent queries related to system health checks.
 
+Partitioning and clustering are essential schema-level strategies when working with very large analytical tables (e.g., petabyte-scale workloads). Nevertheless, additional optimization techniques can further improve performance and cost efficiency. Examples include [(Bhuwan Mishra Medium)](https://arc.net/l/quote/sjrwjznq):
+
+- **Using efficient data types and encoding:** Both timestamps (`ts_ing` and `ts_smp`) are stored using the native `TIMESTAMP` type rather than `STRING`, enabling efficient time-based filtering and indexing. Validation flags are encoded as small integers instead of strings, preserving semantic meaning while reducing storage size and improving query performance.
+- **Using materialized views:** For queries that are executed frequently and involve non-trivial aggregations (e.g., per-patient summary statistics or rolling windows), materialized views may be used to store precomputed results. This can significantly reduce query latency and computational cost, at the expense of additional storage and maintenance overhead.
+
 ## Time Precision
 
 Timestamps are stored with **millisecond** resolution, both in BigQuery and Bigtable. Sub-millisecond precision present in incoming `datetime` objects is truncated during conversion.
