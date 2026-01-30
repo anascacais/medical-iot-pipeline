@@ -34,3 +34,21 @@ def ts2dt(ts):
         timestamp.
     """
     return datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+
+
+def ensure_utc(dt):
+    """
+    Parameters
+    ----------
+    dt : datetime.datetime
+        Timezone-aware datetime object (UTC) representing the event time.
+
+    Returns
+    -------
+    datetime.datetime
+        Timezone-aware datetime object in UTC corresponding to the input
+        timestamp.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)

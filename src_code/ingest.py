@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 # local
+from src_code.bigquery_create import write_to_bigquery
 from src_code.time_aux import ts2dt
 from src_code.bigtable_load import get_last_seen_timestamps, get_table, write_to_bigtable
 
@@ -229,12 +230,12 @@ def main(file_path):
 
     i = 0
     for raw in simulate(file_path):
-        if i == 10:
+        if i == 20:
             break
         clean_sample = process_packet(
             raw, last_seen_timestamps, data_stream_table)
         write_to_bigtable(data_stream_table, health_check_table, clean_sample)
-        # write_to_bigquery(clean_sample)
+        write_to_bigquery(clean_sample)
         i += 1
 
 
