@@ -143,6 +143,10 @@ def write_to_bigtable(stream_data_table, health_check_table, sample):
         )
         row = health_check_table.direct_row(row_key)
 
+        if ("TS_INV" in sample["flags"] or "TS_IMP" in sample["flags"]):
+            for key in EXPECTED_KEYS:
+                row.set_cell("vitals", key, struct.pack(">d", sample[key]))
+
         row.set_cell("meta", "ts_smp", struct.pack(
             ">Q", dt2ts(sample["ts_smp"])))
 
