@@ -58,7 +58,7 @@ def test_write_to_bigquery_success(mock_client_cls):
         "hr": 60.0,
         "flags": [],
     }
-    bigquery_create.write_to_bigquery(sample)
+    bigquery_create.write_to_bigquery(mock_client, sample)
 
     mock_client.insert_rows_json.assert_called_once()
     table_id, rows = mock_client.insert_rows_json.call_args[0]
