@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools >= 61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "src_code"
+dynamic = ["version"]
+readme = "README.md"
+license = { file = "LICENSE" }
+description = "Short description."
+authors = [{ name = "Ana Sofia Carmo", email = "anascacais@gmail.com" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+ 
+]
+
+[project.urls]
+Repository = "https://github.com/anascacais/medical-iot-pipeline.git"
+
+[tool.setuptools.dynamic]
+version = {attr = "src_code.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src_code"]
