@@ -4,7 +4,7 @@ from google.cloud import bigtable
 from google.cloud.bigtable import column_family
 import struct
 # local
-from code.time_aux import ts2dt, dt2ts
+from src_code.time_aux import ts2dt, dt2ts
 
 
 # Load environment variables

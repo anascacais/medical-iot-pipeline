@@ -2,9 +2,9 @@ import json
 import numpy as np
 import pytest
 from datetime import datetime, timedelta, timezone
-from code import ingest
 
-from code.ingest import MIN_TS, PHYSIOLOGICAL_RANGES
+from src_code import ingest
+from src_code.ingest import MIN_TS, PHYSIOLOGICAL_RANGES
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ def mock_bigtable(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        "code.ingest.get_last_seen_timestamps",
+        "src_code.ingest.get_last_seen_timestamps",
         fake_get_last_seen,
     )
 
