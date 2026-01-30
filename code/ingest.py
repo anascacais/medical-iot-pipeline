@@ -3,9 +3,9 @@ import json
 import os
 import datetime
 from dotenv import load_dotenv
-from bigtable_load import get_last_seen_timestamps, get_table, write_to_bigtable, decode_row
 from datetime import datetime, timezone
 import numpy as np
+
 # local
 from code.time_aux import ts2dt
 from code.bigtable_load import get_last_seen_timestamps, get_table, write_to_bigtable
@@ -192,7 +192,7 @@ def process_packet(packet, last_seen_timestamps, data_stream_table):
     event_time = parse_event_timestamp(event_ts_raw)
     output["ts_smp"] = event_time
 
-    if event_time == MIN_TS:
+    if event_time == ts2dt(MIN_TS):
         output["flags"] += ["TS_INV"]
     else:
         if not sensor_id in last_seen_timestamps.keys():
