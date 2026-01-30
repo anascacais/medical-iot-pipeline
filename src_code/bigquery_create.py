@@ -54,7 +54,7 @@ def resolve_flag_code(modality: str, flags: list[str]) -> int:
     return 0
 
 
-def write_to_bigquery(sample):
+def write_to_bigquery(client, sample):
     """
     Load a wide sensor event into a BigQuery table using a row-based schema.
 
@@ -65,6 +65,8 @@ def write_to_bigquery(sample):
 
     Parameters
     ----------
+    client : google.cloud.bigquery Client
+
     sample : dict
         Sensor event payload containing metadata and modality values.
         Expected structure::
@@ -92,7 +94,6 @@ def write_to_bigquery(sample):
     RuntimeError
         If BigQuery reports insertion errors.
     """
-    client = bigquery.Client(project=PROJECT_ID)
 
     flags = sample.get("flags", [])
 

@@ -5,6 +5,7 @@ import datetime
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 import numpy as np
+from google.cloud import bigquery
 
 # local
 from src_code.bigquery_create import write_to_bigquery
@@ -34,7 +35,7 @@ MAP_IO_NAMES = {
 }
 
 
-def simulate(file_path, delay_s=0.1):
+def simulate(file_path, delay_s=0.0):
     '''Simulate real-time data ingestion by yielding one sample at a time from a text file.
 
     Parameters
@@ -221,22 +222,19 @@ def process_packet(packet, last_seen_timestamps, data_stream_table):
 
 
 def main(file_path):
-
     # initiate like this and populate as we see new sensor_ids
     last_seen_timestamps = {}
 
     data_stream_table = get_table(PROJECT_ID, INSTANCE_ID, "stream_data")
     health_check_table = get_table(PROJECT_ID, INSTANCE_ID, "health_check")
 
-    i = 0
+    client = bigquery.Client(project=PROJECT_ID)
+
     for raw in simulate(file_path):
-        if i == 20:
-            break
         clean_sample = process_packet(
             raw, last_seen_timestamps, data_stream_table)
         write_to_bigtable(data_stream_table, health_check_table, clean_sample)
-        write_to_bigquery(clean_sample)
-        i += 1
+        write_to_bigquery(client, clean_sample)
 
 
 if __name__ == "__main__":

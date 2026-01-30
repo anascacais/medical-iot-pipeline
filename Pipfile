@@ -11,6 +11,9 @@ numpy = "*"
 
 [dev-packages]
 pytest = "*"
+ipykernel = "*"
+pandas = "*"
+db-dtypes = "*"
 
 [requires]
 python_version = "3.11"
