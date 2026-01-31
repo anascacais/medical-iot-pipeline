@@ -69,3 +69,54 @@ The Dashboard is intended as a live view of a specific patient (or a group of pa
 Accordingly, missing or invalid data should be explicitly represented, not only through visualization cues (e.g., greyed-out graph segments) but also in system-level summaries, such as the percentage of downtime or data loss over the observation period. In this context, the second Bigtable table, containing “bad-sample” logs, becomes invaluable. For a more thorough discussion see [SCHEMA_DEFENSE.md](design_docs/SCHEMA_DEFENSE.md).
 
 If some sensor data is missing or invalid, the entire sample is not discarded. Instead, the system should ensure that missing values are clearly represented in the visualization, while displaying the remaining valid measurements. This approach preserves information that may help identify the root cause of anomalies. For example, if the temperature measurement is within the physiological range but HR and SpO2 values are invalid, this may indicate that the sensor is properly worn but incorrectly positioned for PPG-based measurements.
+
+## Model Retraining Pipeline
+
+In a septic shock risk prediction system, ground-truth outcome labels are typically not available in real time. As a result, the feedback loop following a model drift alert cannot immediately rely on supervised performance metrics. Instead, drift detection is first driven by unsupervised signals, such as distributional shifts in physiological measurements or changes in the distribution of predicted risk scores.
+
+As outcome labels become available retrospectively (e.g., after delayed EHR integration), they are joined with previously ingested data to enable delayed performance evaluation and supervised retraining.
+
+This pipeline operates under the following assumptions:
+
+- Model drift detection has already occurred and triggered the retraining pipeline.
+- BigQuery acts as the source of truth and supports querying both physiological data and delayed outcome labels (possibly stored in a separate table).
+- Data preprocessing (handling missing data, digital filtering), feature extraction, and feature normalization (including any patient-specific normalization strategy) are already implemented and versioned.
+- The same model architecture and hyperparameters are reused during retraining to isolate data drift effects from model design changes.
+- A predefined temporal training strategy (e.g., walk-forward validation or time-series cross-validation) is already implemented.
+
+### Data Retrieval from BigQuery
+
+Model retraining is performed offline using a **time-aware selection of historical and recent data** retrieved from BigQuery. Rather than retraining exclusively on the most recent data, the training dataset is constructed using a rolling time window that combines:
+
+- A stable historical baseline to preserve previously learned physiological patterns.
+- A more recent data segment to adapt to current patient populations, sensor behavior, and clinical practice.
+
+This approach mitigates catastrophic forgetting, where retraining solely on recent data may degrade performance on previously observed regimes. At the same time, it acknowledges that physiological signals are inherently non-stationary, and that more recent data may carry greater relevance. Optionally, temporal weighting can be applied during training to assign higher importance to newer samples while retaining older data for regularization and stability.
+
+Data retrieval queries are explicitly versioned (e.g., by time range, cohort definition, and label availability) to ensure reproducibility.
+
+### Training and Evaluation
+
+The model is retrained using the retrieved dataset and evaluated along multiple dimensions:
+
+- Predictive performance, computed on labeled data using clinically relevant metrics.
+- Temporal stability, assessed across cross-validation folds or walk-forward splits to ensure consistent behavior over time.
+
+Regression testing, comparing the retrained model against the currently deployed model on:
+
+- Recent labeled data (to assess adaptation).
+- Older labeled data (to ensure no degradation in previously learned patterns).
+
+Evaluation results are logged and associated with:
+
+- The model version.
+- The dataset version (time range, label snapshot).
+- The preprocessing and feature pipeline versions.
+
+This enables full traceability from deployed models back to the exact data and code used during training.
+
+### Model Registry and Deployment
+
+If the retrained model satisfies predefined acceptance criteria (such as improved or non-degraded performance, stable calibration, and compliance with safety thresholds) it is registered in the **Model Registry** as a new version. The new model replaces the existing production model only if all gating conditions are met. All model versions remain accessible in the registry, enabling rollback in case of unexpected behavior in production.
+
+This closed-loop retraining architecture enables continuous model adaptation while preserving reproducibility, auditability, and safety—key requirements for clinical risk prediction systems.

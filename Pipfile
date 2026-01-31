@@ -8,6 +8,8 @@ dotenv = "*"
 google-cloud-bigquery = "*"
 google-cloud-bigtable = "*"
 numpy = "*"
+scikit-learn = "*"
+kfp = "*"
 
 [dev-packages]
 pytest = "*"
