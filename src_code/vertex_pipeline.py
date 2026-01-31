@@ -95,27 +95,69 @@ def train_model(
     new_model: Output[Model],
     metrics: Output[Metrics]
 ):
+    """
+    Train a dummy regression model on a dataset and log evaluation metrics.
+
+    The function reads a dataset from a CSV, splits it into training and 
+    test subsets according to a 'flag' column, trains a DummyRegressor, 
+    evaluates it on both current and legacy test sets, and logs the 
+    results as metrics.
+
+    Parameters
+    ----------
+    dataset : Input[Dataset]
+        Input dataset in CSV format containing features, a 'label' column, 
+        a 'flag' column indicating TRAIN/TEST_1/TEST_0, and a 'ts_smp' timestamp column.
+    model_metadata : Output[dict]
+        Dictionary to store metadata about the dataset split, including 
+        training and testing timestamps.
+    new_model : Output[Model]
+        Output model object after fitting.
+    metrics : Output[Metrics]
+        Output object used to log evaluation metrics (AUPRC for test and legacy test sets).
+
+    Returns
+    -------
+    None
+        The outputs (model, metadata, metrics) are stored in the provided Output objects.
+    """
     import pandas as pd
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.dummy import DummyRegressor
+    from sklearn.metrics import average_precision_score
+
+    def split_dataset(df, model_metadata):
+        train_ids = df[df["flag"] == "TRAIN"].index
+        test_ids = df[df["flag"] == "TEST_1"].index
+        test_legacy_ids = df[df["flag"] == "TEST_0"].index
+
+        label_df = df["label"]
+        df = df.drop(["label", "flag"], axis=1)
+
+        model_metadata["train_start_ts"] = df.loc[train_ids[0], "ts_smp"]
+        model_metadata["train_end_ts"] = df.loc[train_ids[-1], "ts_smp"]
+        model_metadata["test_start_ts"] = df.loc[test_ids[0], "ts_smp"]
+        model_metadata["test_end_ts"] = df.loc[test_ids[-1], "ts_smp"]
+
+        return df.loc[train_ids], label_df.loc[train_ids], df.loc[test_ids], label_df.loc[test_ids], df.loc[test_legacy_ids], label_df.loc[test_legacy_ids]
 
     dataset_df = pd.read_csv(dataset.path)
 
     # split dataset according to flag column - or maybe return ts so its easier to create metadata
     (X_train, y_train), (X_test, y_test), (X_legacy_test,
-                                           y_legacy_test), model_metadata = split_dataset(dataset_df)
+                                           y_legacy_test) = split_dataset(dataset_df, model_metadata)
 
     # define model and fit
-    new_model = LogisticRegression()  # ?? risk prediction ??
+    new_model = DummyRegressor()
     new_model.fit(X_train, y_train)
 
     # evaluate on new and legacy test data
     preds = new_model.predict(X_test)
-    performance_test = perfomance_metric(y_test, preds)
-    metrics.log_metric("?", performance_test)
+    performance_test = average_precision_score(y_test, preds)
+    metrics.log_metric("AUPRC", performance_test)
 
     preds = new_model.predict(X_legacy_test)
-    performance_legacy = perfomance_metric(y_legacy_test, preds)
-    metrics.log_metric("?", performance_legacy)
+    performance_legacy = average_precision_score(y_legacy_test, preds)
+    metrics.log_metric("AUPRC_legacy", performance_legacy)
 
 
 @component(
