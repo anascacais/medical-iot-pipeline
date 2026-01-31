@@ -137,10 +137,10 @@ def validate_measurement(value, valid_range):
     try:
         value = float(value)
     except (TypeError, ValueError):
-        return "INV", np.nan
+        return "NAN", np.nan
 
     if not (valid_range[0] <= value <= valid_range[1]):
-        return "INV", np.nan
+        return "INV", value
 
     return "OK", value
 
