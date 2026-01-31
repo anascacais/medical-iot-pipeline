@@ -1,7 +1,6 @@
-from google.cloud import aiplatform
-from datetime import datetime, timezone
 import os
-from kfp import dsl
+from kfp import dsl, compiler
+from google.cloud import aiplatform
 from kfp.dsl import (
     component,
     Dataset,
@@ -11,32 +10,28 @@ from kfp.dsl import (
     Output,
     Input
 )
-from typing import NamedTuple
-from google.cloud import aiplatform
-
 
 PROJECT_ID = os.getenv("PROJECT_ID")
 REGION = os.getenv("REGION")
 DATASET = os.getenv("DATASET_BQ")
 TABLE_LABELS = os.getenv("TABLE_BQ_LABELS")
 TABLE_DATA = os.getenv("TABLE_BQ")
-
-
-# output type definitions
-class OutputDataset(NamedTuple):
-    output_dataset: Dataset
+MODEL_ID = os.getenv("MODEL_ID")
+PIPELINE_ROOT = os.getenv("PIPELINE_ROOT")
+PIPELINE_PACKAGE_PATH = "septic_shock_pipeline.json"
 
 
 @component(
     base_image="python:3.11",
-    packages_to_install=["pandas", "google-cloud-bigquery"],
+    packages_to_install=[
+        "pandas", "google-cloud-bigquery", "google-cloud-aiplatform"],
 )
 def ingest_from_bigquery(
     project_id: str,
     dataset_id: str,
     data_table_id: str,
     label_table_id: str,
-    model: Model,
+    prev_model_resource_name: str,
     output_dataset: Output[Dataset],
 ):
     """Prepares a dataset for training and evaluating a new model while accounting for
@@ -66,8 +61,8 @@ def ingest_from_bigquery(
         Name of the table containing the feature data.
     label_table_id : str
         Name of the table containing the labels corresponding to the feature data.
-    model : kfp.dsl.Model
-        Currently deployed model whose training and evaluation data are used to guide
+    prev_model_resource_name : str
+        Resource name for currently deployed model whose training and evaluation data are used to guide
         the new split strategy.
 
     Returns
@@ -79,21 +74,87 @@ def ingest_from_bigquery(
             - `TEST_0`: Sample belongs to the dataset used to evaluate the currently deployed model.
             - `TEST_1`: Sample belongs to the dataset used to evaluate the new model on new data.
     """
-    model.metadata["training_data"]["train_end_ts"]
+    from google.cloud import aiplatform
+    from google.cloud import bigquery
+    import pandas as pd
 
-    # dataset must be wide and not long + drop NaN + feature extraction
-    pass
+    model = aiplatform.Model(prev_model_resource_name)
+    prev_train_start_ts = model.metadata["train_start_ts"]
+    prev_train_end_ts = model.metadata["train_end_ts"]
+    prev_test_start_ts = model.metadata["test_start_ts"]
+    prev_test_end_ts = model.metadata["test_end_ts"]
+
+    client = bigquery.Client(project=project_id)
+    # load all data that falls within and after old model's ingestion period
+    query = f"""
+    WITH data AS (
+        SELECT *
+            FROM (
+                SELECT *
+                FROM `{project_id}.{dataset_id}.{data_table_id}`
+                WHERE ts_ing >= {prev_train_start_ts}
+                AND flag_type_code = 0
+            )
+            PIVOT (
+                MAX(value) FOR modality IN ('hr', 'temp', 'SpO2')
+            )
+        )
+
+        SELECT
+            data.*,
+            labels.sceptic_shock_label
+            FROM `{project_id}.{dataset_id}.{label_table_id}` AS labels
+            JOIN data
+            ON data.ts_smp = labels.ts_smp
+            AND data.sensor_id = labels.sensor_id;
+    """
+
+    df = client.query(query).to_dataframe()
+
+    # remove incomplete samples are unecessary columns
+    df = df.dropna()
+    df = df.drop(["ts_smp", "sensor_id", "flag_type_code"], axis=1)
+
+    # get new data
+    new_data = df[df["ts_ing"] > prev_test_end_ts]
+    test_df = new_data.iloc[int(len(new_data) * 0.7):]
+    train_df = new_data.iloc[:int(len(new_data) * 0.7)]
+
+    # get prev data
+    legacy_test_df = df[(df["ts_ing"] >= prev_test_start_ts)
+                        & (df["ts_ing"] <= prev_test_end_ts)]
+    prev_train_df = df[(df["ts_ing"] >= prev_train_start_ts)
+                       & (df["ts_ing"] <= prev_train_end_ts)]
+
+    # get joint train data
+    train_df = pd.concat([
+        prev_train_df.iloc[len(train_df):],
+        train_df
+    ])
+
+    # label samples and concat
+    train_df["flag"] = "TRAIN"
+    legacy_test_df["flag"] = "TEST_0"
+    test_df["flag"] = "TEST_1"
+
+    dataset_df = pd.concat([
+        train_df,
+        legacy_test_df,
+        test_df
+    ], ignore_index=True)
+
+    dataset_df.to_csv(output_dataset.path, index=False)
 
 
 @component(
     base_image="python:3.11",
-    packages_to_install=["pandas", "scikit-learn", "joblib"],
+    packages_to_install=["pandas", "scikit-learn"],
 )
 def train_model(
     dataset: Input[Dataset],
     model_metadata: Output[dict],
     new_model: Output[Model],
-    metrics: Output[Metrics]
+    metrics: Output[Artifact]
 ):
     """
     Train a dummy regression model on a dataset and log evaluation metrics.
@@ -113,7 +174,7 @@ def train_model(
         training and testing timestamps.
     new_model : Output[Model]
         Output model object after fitting.
-    metrics : Output[Metrics]
+    metrics : Output[Artifact]
         Output object used to log evaluation metrics (AUPRC for test and legacy test sets).
 
     Returns
@@ -124,6 +185,7 @@ def train_model(
     import pandas as pd
     from sklearn.dummy import DummyRegressor
     from sklearn.metrics import average_precision_score
+    import json
 
     def split_dataset(df, model_metadata):
         train_ids = df[df["flag"] == "TRAIN"].index
@@ -159,17 +221,48 @@ def train_model(
     performance_legacy = average_precision_score(y_legacy_test, preds)
     metrics.log_metric("AUPRC_legacy", performance_legacy)
 
+    metrics_data = {
+        "AUPRC": performance_test,
+        "AUPRC_legacy": performance_legacy
+    }
+
+    with open(metrics.path, "w") as f:
+        json.dump(metrics_data, f)
+
 
 @component(
     base_image="python:3.11",
-    packages_to_install=["pandas", "scikit-learn", "joblib"],
+    packages_to_install=["google-cloud-aiplatform"],
 )
 def compare_models(
-    previous_model: Input[Model],
-    new_model: Input[Model],
-    new_metrics: Input[Metrics]
+    prev_model_resource_name: str,
+    new_metrics: Input[Metrics],
+    deploy: Output[bool],
+    tolerance: float = 0.01
 ):
-    pass
+    import json
+    from google.cloud import aiplatform
+
+    # load metrics
+    with open(new_metrics.path, "r") as f:
+        metrics_data = json.load(f)
+
+    # load previous model metadata
+    prev_model = aiplatform.Model(prev_model_resource_name)
+    with open(prev_model.metadata_path, "r") as f:
+        prev_metadata = json.load(f)
+
+    # decision logic
+    if metrics_data["AUPRC_legacy"] < prev_metadata["AUPRC"] - tolerance:
+        decision = False
+    elif metrics_data["AUPRC"] > prev_metadata["AUPRC"] + tolerance:
+        decision = True
+    else:
+        decision = False
+
+    # write decision to deploy output
+    with open(deploy.path, "w") as f:
+        f.write(decision)
 
 
 @component(
@@ -180,21 +273,56 @@ def register_model(
     project_id: str,
     region: str,
     model: Input[Model],
-    training_metadata: Input[dict],
+    prev_model_resource_name: str,
+    training_metadata: Input[Artifact],
     registered_model: Output[Model],
-
 ):
+    """
+    Upload a trained model to Vertex AI, optionally using metadata from the previous model.
+
+    Parameters
+    ----------
+    project_id : str
+        GCP project ID.
+    region : str
+        GCP region.
+    model : Input[Model]
+        Model to register.
+    prev_model : Input[Model]
+        Previously deployed model (used to reuse display name or serving container URI).
+    training_metadata : Input[Artifact]
+        Metadata from training to attach to the model.
+    registered_model : Output[Model]
+        Output model artifact pointing to the Vertex AI model.
+    """
+    import json
     from google.cloud import aiplatform
 
+    # initialize Vertex AI SDK
     aiplatform.init(project=project_id, location=region)
 
+    with open(training_metadata.path, "r") as f:
+        metadata_dict = json.load(f)
+
+    prev_model = aiplatform.Model(prev_model_resource_name)
+    with open(prev_model.metadata_path, "r") as f:
+        prev_metadata = json.load(f)
+
+    display_name = prev_metadata.get("display_name", "septic-shock-predictor")
+
+    # use a serving container URI (reuse from previous model metadata if stored)
+    serving_container_image_uri = prev_metadata.get(
+        "serving_container_image_uri", "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest")
+
+    # upload model to Vertex AI
     uploaded_model = aiplatform.Model.upload(
-        display_name="septic-shock-risk",
-        artifact_uri="gs://my-bucket/models/septic-risk/v3/",
-        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest",
-        metadata=training_metadata,
+        display_name=display_name,
+        artifact_uri=model.uri,
+        serving_container_image_uri=serving_container_image_uri,
+        metadata=metadata_dict,
     )
 
+    # assign resource name to the output
     registered_model.uri = uploaded_model.resource_name
 
 
@@ -203,27 +331,49 @@ def register_model(
     packages_to_install=["google-cloud-aiplatform"],
 )
 def deploy_model(
-    model: Model,
     project_id: str,
     region: str,
+    registered_model: Model,
+    endpoint_name: str = "septic-shock-endpoint",
+    machine_type: str = "n1-standard-2",
 ):
+    """
+    Deploy a Vertex AI model to an endpoint. If the endpoint exists, it reuses it; otherwise, creates a new one.
+
+    Parameters
+    ----------
+    registered_model : Model
+        The model artifact to deploy (Vertex AI resource name).
+    project_id : str
+        GCP project ID.
+    region : str
+        GCP region.
+    endpoint_name : str
+        Name of the Vertex AI endpoint.
+    machine_type : str
+        Machine type for deployment.
+    """
     from google.cloud import aiplatform
 
     aiplatform.init(project=project_id, location=region)
+    model_obj = aiplatform.Model(registered_model.uri)
 
-    model_obj = aiplatform.Model(model.uri)
+    # reuse existing endpoint if available
+    endpoints = aiplatform.Endpoint.list(
+        filter=f'display_name="{endpoint_name}"')
+    if endpoints:
+        endpoint = endpoints[0]
+    else:
+        endpoint = aiplatform.Endpoint.create(display_name=endpoint_name)
 
-    endpoint = aiplatform.Endpoint.create(
-        display_name="septic-shock-endpoint"
-    )
-
+    # deploy the model
     model_obj.deploy(
         endpoint=endpoint,
-        machine_type="n1-standard-2",
+        machine_type=machine_type,
     )
 
-
 # Pipeline Definition
+
 
 @dsl.pipeline(
     name="septic-shock-training-pipeline",
@@ -232,38 +382,77 @@ def deploy_model(
 def septic_shock_pipeline(
     project_id: str,
     region: str,
+    model_id: str,
     bq_dataset: str,
     bq_data_table: str,
     bq_label_table: str,
 ):
 
-    model = aiplatform.Model("projects/.../locations/.../models/123456789")
+    prev_model_resource_name = f"projects/{project_id}/locations/{region}/models/{model_id}"
 
     ingest_task = ingest_from_bigquery(
         project_id=project_id,
         dataset_id=bq_dataset,
         data_table_id=bq_data_table,
         label_table_id=bq_label_table,
-        model=model
+        prev_model_resource_name=prev_model_resource_name
     )
 
     train_task = train_model(
-        dataset=ingest_task.output_dataset
+        dataset=ingest_task.outputs["output_dataset"]
     )
 
     comparison_task = compare_models(
-
+        prev_model_resource_name=prev_model_resource_name,
+        new_metrics=train_task.outputs["metrics"]
     )
 
-    with dsl.Condition(comparison_task.outputs["deploy"] == "true"):
+    with dsl.Condition(comparison_task.outputs["deploy"]):
         register_task = register_model(
-            model=train_task.outputs["model"],
+            project_id=project_id,
+            region=region,
+            model=train_task.outputs["new_model"],
+            prev_model_resource_name=prev_model_resource_name,
+            training_metadata=train_task.outputs["model_metadata"]
+        )
+
+        deploy_model(
+            registered_model=register_task.outputs["registered_model"],
             project_id=project_id,
             region=region,
         )
 
-        deploy_model(
-            model=register_task.outputs["registered_model"],
-            project_id=project_id,
-            region=region,
-        ).after(register_task)
+
+def run_pipeline():
+    # initialize Vertex AI
+    aiplatform.init(
+        project=PROJECT_ID,
+        location=REGION,
+    )
+
+    # compile pipeline
+    compiler.Compiler().compile(
+        pipeline_func=septic_shock_pipeline,
+        package_path=PIPELINE_PACKAGE_PATH,
+    )
+
+    # submit pipeline job
+    job = aiplatform.PipelineJob(
+        display_name="septic-shock-training-pipeline",
+        template_path=PIPELINE_PACKAGE_PATH,
+        pipeline_root=PIPELINE_ROOT,
+        parameter_values={
+            "project_id": PROJECT_ID,
+            "region": REGION,
+            "bq_dataset": os.getenv("DATASET_BQ"),
+            "bq_data_table": os.getenv("TABLE_BQ"),
+            "bq_label_table": os.getenv("TABLE_BQ_LABELS"),
+        },
+        enable_caching=True,
+    )
+
+    job.run(sync=False)
+
+
+if __name__ == "__main__":
+    run_pipeline()
