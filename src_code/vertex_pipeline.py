@@ -44,9 +44,10 @@ def ingest_from_bigquery(
             - 70% of these samples are assigned to the training set.
             - 30% are assigned to the test set for evaluating the new model.
         - **Old training data** (used to train the currently deployed model):
-            - A portion of the last x% of this data is appended to the new training set.
-            This ensures that the new training set contains a balanced mix of old and new
-            samples (~50% each), helping maintain performance on historical distributions.
+            - The most recent portion of the historical training data is appended 
+            to the new training set, yielding a roughly balanced composition of historical
+            and newly ingested samples (≈50% each), helping maintain performance on 
+            historical distributions.
         - **Old test data** (used to evaluate the currently deployed model):
             - Fully retained for testing to assess whether the new model maintains performance
             on previously unseen evaluation data (mitigating catastrophic forgetting).

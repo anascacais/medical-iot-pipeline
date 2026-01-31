@@ -79,44 +79,42 @@ As outcome labels become available retrospectively (e.g., after delayed EHR inte
 This pipeline operates under the following assumptions:
 
 - Model drift detection has already occurred and triggered the retraining pipeline.
-- BigQuery acts as the source of truth and supports querying both physiological data and delayed outcome labels (possibly stored in a separate table).
-- Data preprocessing (handling missing data, digital filtering), feature extraction, and feature normalization (including any patient-specific normalization strategy) are already implemented and versioned.
-- The same model architecture and hyperparameters are reused during retraining to isolate data drift effects from model design changes.
-- A predefined temporal training strategy (e.g., walk-forward validation or time-series cross-validation) is already implemented.
+- BigQuery acts as the source of truth and supports querying both physiological data and delayed outcome labels (stored in a separate table and joined through `sensor_id` and `ts_smp`).
+- Physiological measures are treated as features: a feature set is defined by the valid heart rate, body temperature, and SpO2.
+- The same model architecture and hyperparameters are reused during retraining to isolate data drift effects from model design changes (in this implementation, a dummy model is used).
 
-### Data Retrieval from BigQuery
+### Data Retrieval from BigQuery and Training
 
-Model retraining is performed offline using a **time-aware selection of historical and recent data** retrieved from BigQuery. Rather than retraining exclusively on the most recent data, the training dataset is constructed using a rolling time window that combines:
+Model retraining is performed offline using a time-aware **partitioning of historical and newly arrived data** retrieved from BigQuery. The retraining dataset is constructed relative to the data cutoff timestamp of the currently deployed model.
 
-- A stable historical baseline to preserve previously learned physiological patterns.
-- A more recent data segment to adapt to current patient populations, sensor behavior, and clinical practice.
+The split logic is defined as follows:
 
-This approach mitigates catastrophic forgetting, where retraining solely on recent data may degrade performance on previously observed regimes. At the same time, it acknowledges that physiological signals are inherently non-stationary, and that more recent data may carry greater relevance. Optionally, temporal weighting can be applied during training to assign higher importance to newer samples while retaining older data for regularization and stability.
+- New data (samples ingested after the last training timestamp of the currently deployed model):
+  - First 70% of these samples are assigned to the training set.
+  - Remaining are reserved as a hold-out test set for evaluating the newly trained model on previously unseen, up-to-date data.
 
-Data retrieval queries are explicitly versioned (e.g., by time range, cohort definition, and label availability) to ensure reproducibility.
+- Old training data (samples used to train the currently deployed model):
+  - The most recent portion of the historical training data is appended to the new training set.
+  - This results in a training dataset composed of an approximately balanced mix of historical and recent samples, helping preserve previously learned physiological patterns while adapting to newer data.
 
-### Training and Evaluation
+- Old test data (samples used to evaluate the currently deployed model):
+  - Fully retained as an additional evaluation set, allowing explicit assessment of whether the new model maintains performance on historical evaluation data.
 
-The model is retrained using the retrieved dataset and evaluated along multiple dimensions:
+This strategy directly addresses catastrophic forgetting by ensuring that retraining does not rely solely on newly observed data, while still prioritizing adaptation to recent patient populations, sensor behavior, and clinical practice. At the same time, it reflects the inherently non-stationary nature of physiological signals, where recent data is often more informative for future predictions.
 
-- Predictive performance, computed on labeled data using clinically relevant metrics.
-- Temporal stability, assessed across cross-validation folds or walk-forward splits to ensure consistent behavior over time.
+All data retrieval queries are explicitly registered as model metadata (e.g., via time boundaries) to ensure full reproducibility and traceability of each retraining run.
 
-Regression testing, comparing the retrained model against the currently deployed model on:
+**NOTE:** Time-aware partitioning is based on `ts_ing`.
 
-- Recent labeled data (to assess adaptation).
-- Older labeled data (to ensure no degradation in previously learned patterns).
+> **COMMENT:** Other train-test split strategies could also be appropriate for this use case, including patient-specific or more sophisticated temporal approaches. This implementation was selected because it demonstrates the full pipeline functionality with moderate complexity while remaining straightforward to implement.
 
-Evaluation results are logged and associated with:
+### Evaluation and Conditioned Deployment
 
-- The model version.
-- The dataset version (time range, label snapshot).
-- The preprocessing and feature pipeline versions.
+After training, the newly trained model is evaluated and compared against the currently deployed model. Evaluation metrics produced during training (e.g., AUPRC on recent and legacy test sets) are loaded alongside the stored metadata of the previous model from the Vertex AI Model Registry.
 
-This enables full traceability from deployed models back to the exact data and code used during training.
+A tolerance-based decision rule is applied:
 
-### Model Registry and Deployment
-
-If the retrained model satisfies predefined acceptance criteria (such as improved or non-degraded performance, stable calibration, and compliance with safety thresholds) it is registered in the **Model Registry** as a new version. The new model replaces the existing production model only if all gating conditions are met. All model versions remain accessible in the registry, enabling rollback in case of unexpected behavior in production.
+- Deployment is rejected if performance on legacy data **degrades beyond an acceptable threshold**.
+- Deployment is approved only if the new model shows a **meaningful improvement over the previous model** on current data.
 
 This closed-loop retraining architecture enables continuous model adaptation while preserving reproducibility, auditability, and safety—key requirements for clinical risk prediction systems.
