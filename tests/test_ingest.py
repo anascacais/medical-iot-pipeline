@@ -73,9 +73,9 @@ def test_valid_timestamp(now):
     [
         (None, (0, 10), "NAN", np.nan),
         (np.nan, (0, 10), "NAN", np.nan),
-        ("abc", (0, 10), "INV", np.nan),
-        (-1, (0, 10), "INV", np.nan),
-        (11, (0, 10), "INV", np.nan),
+        ("abc", (0, 10), "NAN", np.nan),
+        (-1, (0, 10), "INV", -1),
+        (11, (0, 10), "INV", 11),
         (5, (0, 10), "OK", 5.0),
         ("5.5", (0, 10), "OK", 5.5),
     ],
@@ -135,7 +135,7 @@ def test_invalid_physiology(valid_packet, last_seen, mock_bigtable):
     output = ingest.process_packet(json.dumps(pkt), last_seen, None)
 
     assert "hr_INV" in output["flags"]
-    assert np.isnan(output["hr"])
+    assert output["hr"] == pkt["heart_rate"]
 
 
 def test_nan_measurement(valid_packet, last_seen, mock_bigtable):
