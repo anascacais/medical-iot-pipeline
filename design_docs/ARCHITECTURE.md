@@ -45,10 +45,12 @@ As such, the processing layer is responsible for validating incoming data, flagg
 Missing, invalid, or impossible samples are flagged according to the modality where the issue was observed:
 
 - **Physiological data and battery:** Invalid measurement due to physiological anomalies (`*_INV`, where `*` represents a modality -- check [SCHEMA_DEFENSE.md](design_docs/SCHEMA_DEFENSE.md) for all flags), or missing measurements (`*_NAN`).
-- **Timestamps:** Event timestamps that are out-of-order or in the future relative to the system (`TS_IMP`), or that cannot be parsed (`TS_INV`). Duplicate timestamps are automatically handled by Bigtable’s garbage collection policy (see [SCHEMA_DEFENSE.md](design_docs/SCHEMA_DEFENSE.md)).
+- **Timestamps:** Event timestamps that are out-of-order or in the future relative to the system (`TS_IMP`), or that cannot be parsed (`TS_INV`). Duplicate timestamps are automatically handled by Bigtable’s garbage collection policy (see [SCHEMA_DEFENSE.md](design_docs/SCHEMA_DEFENSE.md)); at this stage, duplicate timestamps are not handled or flagged by BigQuery.
 - **Malformed packet:** In the case of a malformed packet, the `*_NAN` flag is applied to all physiological data and battery, and the `TS_INV` flag is applied to the sample (event) timestamp.
 
 **NOTE:** Whenever the flag `TS_INV` is set, a placeholder value of 0 ms (representing `1970-01-01 00:00:00+00:00`) is stored to prevent conversion and storage errors.
+
+> **COMMENT:** At this stage, the Processing Layer handles one sample at a time. However, for higher throughput, it may be beneficial to do batch upload, as least to Bigtable. But not sure -- would have to evaluate more thoroughly.
 
 ### Data Formatting
 
