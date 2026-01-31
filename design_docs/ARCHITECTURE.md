@@ -1,5 +1,19 @@
 # Architecture
 
+The overall architecture of this Medical IoT Pipeline is illustrated in the diagram below.
+
+![architecture](architecture.png)
+
+The architecture assumes that individual samples (or events) are streamed in real time and ingested by a **Processing Layer**, which performs validation and normalization before making the data available for downstream consumption. The Processing Layer fan-outs each processed sample to two downstream consumers, which persist the data in different storage systems according to access patterns and latency requirements.
+
+**Bigtable** is used as a hot storage layer, retaining recent data (including both physiological samples and system logs) for a limited time window. This enables low-latency access to support real-time dashboards and operational monitoring.
+
+**BigQuery**, in contrast, acts as the long-term analytical data warehouse. It stores the same samples and logs permanently, enabling large-scale analytics, historical analysis, model training, and auditability.
+
+In parallel, a closed-loop **machine learning architecture** supports a deployed model that predicts septic shock risk. The model is trained and monitored using data stored in BigQuery, which serves as the source of truth for both training and evaluation datasets.
+
+If model drift detection triggers an alert in production, a **Model Retraining Pipeline** is automatically invoked. This pipeline retrains the model on recent data, evaluates its performance against the currently deployed model using predefined metrics, and deploys the new model only if performance and safety criteria are met.
+
 ## Processing Layer
 
 The processing layer receives real-time data from multiple sensors and should prepare data for downstream long-term storage and ML pipelines (BigQuery) as well as shorter-term storage which feeds into a live Dashboard (Bigtable).
